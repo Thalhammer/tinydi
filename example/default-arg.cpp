@@ -7,7 +7,7 @@ struct NameService
 {
     // Every registered service interface needs to be polymorphic.
     virtual ~NameService() {}
-    std::string name;
+    std::string name {};
 };
 
 // This generates some boiler plate for the global instance.
@@ -46,7 +46,7 @@ public:
 class dummy_class_lazy
 {
 public:
-    di::lazy_handle<NameService> m_nameservice;
+    di::lazy_handle<NameService> m_nameservice {};
 };
 
 int main()

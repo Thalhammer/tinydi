@@ -3,12 +3,13 @@
 
 namespace
 {
-    class SampleInterface
+    struct SampleInterface
     {
+        virtual ~SampleInterface() {}
         virtual void hello() = 0;
     };
 
-    class SampleImpl : public SampleInterface
+    struct SampleImpl : public SampleInterface
     {
         void hello() override
         {

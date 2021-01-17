@@ -30,15 +30,15 @@ namespace tinydi
      */
     class injector
     {
-        mutable std::recursive_mutex m_mtx;
-        std::function<void(std::exception_ptr)> m_except_handler;
+        mutable std::recursive_mutex m_mtx {};
+        std::function<void(std::exception_ptr)> m_except_handler {};
         struct info
         {
             using builder_fn_t = std::function<std::shared_ptr<void>(const tinydi::injector &)>;
             std::vector<std::pair<std::shared_ptr<void>, builder_fn_t>> instances = {};
             bool in_building = false;
         };
-        mutable std::unordered_map<std::type_index, info> m_types;
+        mutable std::unordered_map<std::type_index, info> m_types {};
 
     public:
         /**

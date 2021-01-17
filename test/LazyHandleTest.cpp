@@ -5,6 +5,7 @@ namespace
 {
     struct SampleInterface
     {
+        virtual ~SampleInterface() {}
         virtual void hello() = 0;
     };
 
