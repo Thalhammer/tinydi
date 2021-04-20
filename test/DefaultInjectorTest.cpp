@@ -18,8 +18,6 @@ namespace
     };
 } // namespace
 
-TINYDI_IMPL()
-
 TEST(DefaultInjectorTest, SetGet)
 {
     tinydi::set_default_injector(std::make_shared<tinydi::injector>());

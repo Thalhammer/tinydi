@@ -338,6 +338,11 @@ namespace tinydi
             std::unique_lock<std::recursive_mutex> lck(m_mtx);
             return m_except_handler;
         }
+
+        /**
+         * \brief Bind all mappings defined using TINYDL_BIND_CLASS and TINYDL_BIND_FUNCTION to this injector.
+         */
+        void bind_static_mappings();
     };
 
     /**
@@ -353,6 +358,15 @@ namespace tinydi
     std::shared_ptr<injector> get_default_injector();
 
     /**
+     * \brief Get a list of static mappings
+     * 
+     * A static mapping is a mapping created independend of the injector creation using the TINYDL_BIND_CLASS and TINYDL_BIND_FUNCTION macros.
+     * 
+     * \return Vector containing initializers for static mappings
+     */
+    std::vector<std::function<void(injector &)>> &get_static_mappings();
+
+    /**
      * \brief Get service of type T using the default injector.
      * 
      * If the service was not yet created it will try instanciate it using the builder defined at the bind statement.
@@ -362,7 +376,7 @@ namespace tinydi
      * \return Returns instance of service or nullptr
      */
     template <typename T>
-    inline static std::shared_ptr<T> get()
+    inline std::shared_ptr<T> get()
     {
         auto injector = get_default_injector();
         if (!injector)
@@ -379,7 +393,7 @@ namespace tinydi
      * \return Returns instance of service
      */
     template <typename T>
-    inline static std::shared_ptr<T> get(std::nothrow_t)
+    inline std::shared_ptr<T> get(std::nothrow_t)
     {
         auto injector = get_default_injector();
         if (!injector)
@@ -453,6 +467,14 @@ namespace tinydi
             return *get();
         }
     };
+
+    inline void injector::bind_static_mappings()
+    {
+        for (auto &e : get_static_mappings())
+        {
+            e(*this);
+        }
+    }
 } // namespace tinydi
 
 #define TINYDI_IMPL()                                                                      \
@@ -461,4 +483,31 @@ namespace tinydi
         std::shared_ptr<injector> s_default_injector;                                      \
         void set_default_injector(std::shared_ptr<injector> i) { s_default_injector = i; } \
         std::shared_ptr<injector> get_default_injector() { return s_default_injector; }    \
+        std::vector<std::function<void(injector &)>> &get_static_mappings()                \
+        {                                                                                  \
+            static std::vector<std::function<void(injector &)>> mappings{};                \
+            return mappings;                                                               \
+        }                                                                                  \
+    }
+
+#define TINYDI_MACRO_IMPL_CONCAT(x, y) x##y
+#define TINYDI_MACRO_CONCAT(x, y) TINYDI_MACRO_IMPL_CONCAT(x, y)
+#define TINYDI_BIND_CLASS(TInterface, TImpl)                                                                      \
+    namespace                                                                                                     \
+    {                                                                                                             \
+        static auto TINYDI_MACRO_CONCAT(____tinydi_static_mapping_, __COUNTER__) __attribute__((unused)) = []() { \
+            auto &e = ::tinydi::get_static_mappings();                                                            \
+            e.push_back([](::tinydi::injector &di) { di.bind<TInterface, TImpl>(); });                            \
+            return e.size();                                                                                      \
+        }();                                                                                                      \
+    }
+
+#define TINYDI_BIND_FUNCTION(TInterface, Function)                                                                \
+    namespace                                                                                                     \
+    {                                                                                                             \
+        static auto TINYDI_MACRO_CONCAT(____tinydi_static_mapping_, __COUNTER__) __attribute__((unused)) = []() { \
+            auto &e = ::tinydi::get_static_mappings();                                                            \
+            e.push_back([](::tinydi::injector &di) { di.bind<TInterface>(Function); });                           \
+            return e.size();                                                                                      \
+        }();                                                                                                      \
     }
