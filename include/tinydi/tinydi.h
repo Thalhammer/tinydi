@@ -30,15 +30,15 @@ namespace tinydi
      */
     class injector
     {
-        mutable std::recursive_mutex m_mtx {};
-        std::function<void(std::exception_ptr)> m_except_handler {};
+        mutable std::recursive_mutex m_mtx{};
+        std::function<void(std::exception_ptr)> m_except_handler{};
         struct info
         {
             using builder_fn_t = std::function<std::shared_ptr<void>(const tinydi::injector &)>;
             std::vector<std::pair<std::shared_ptr<void>, builder_fn_t>> instances = {};
             bool in_building = false;
         };
-        mutable std::unordered_map<std::type_index, info> m_types {};
+        mutable std::unordered_map<std::type_index, info> m_types{};
 
     public:
         /**
@@ -178,6 +178,32 @@ namespace tinydi
         }
 
         /**
+         * \brief Bind a builder function to the given interface.
+         * 
+         * Binds a builder function which is called to get an instance of the given service.
+         * Returning nullptr is considered an error and the result will not be part of any returned services.
+         * 
+         * \tparam TInterface Type of the service interface
+         * \param fn Function to be called for service creation
+         */
+        template <typename TInterface, typename = typename std::enable_if<std::is_polymorphic<TInterface>::value, void>::type>
+        void bind(std::function<std::shared_ptr<TInterface>()> fn)
+        {
+            std::unique_lock<std::recursive_mutex> lck(m_mtx);
+            auto it = m_types.find(typeid(TInterface));
+            if (it != m_types.end())
+            {
+                it->second.instances.emplace_back(nullptr, [fn = std::move(fn)](const tinydi::injector &) { return fn(); });
+            }
+            else
+            {
+                info e = {};
+                e.instances.emplace_back(nullptr, [fn = std::move(fn)](const tinydi::injector &) { return fn(); });
+                m_types.emplace(typeid(TInterface), std::move(e));
+            }
+        }
+
+        /**
          * \brief Bind a service implementation class to the given interface.
          * 
          * Binds an implementation of the given interface. Calls make_shared with the implementation class
@@ -237,6 +263,26 @@ namespace tinydi
             m_types.erase(typeid(TInterface));
             info e = {};
             e.instances.emplace_back(nullptr, [fn = std::move(fn)](const tinydi::injector &i) { return fn(i); });
+            m_types.emplace(typeid(TInterface), std::move(e));
+        }
+
+        /**
+         * \brief Bind a builder function to the given interface, removing all existing implementations.
+         * 
+         * Binds a builder function which is called to get an instance of the given service.
+         * Returning nullptr is considered an error and the result will not be part of any returned services.
+         * All prior bindings are removed.
+         * 
+         * \tparam TInterface Type of the service interface
+         * \param fn Function to be called for service creation
+         */
+        template <typename TInterface, typename = typename std::enable_if<std::is_polymorphic<TInterface>::value, void>::type>
+        void replace(std::function<std::shared_ptr<TInterface>()> fn)
+        {
+            std::unique_lock<std::recursive_mutex> lck(m_mtx);
+            m_types.erase(typeid(TInterface));
+            info e = {};
+            e.instances.emplace_back(nullptr, [fn = std::move(fn)](const tinydi::injector &) { return fn(); });
             m_types.emplace(typeid(TInterface), std::move(e));
         }
 

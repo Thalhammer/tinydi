@@ -31,6 +31,14 @@ TEST(InjectorTest, BindFunction)
     });
 }
 
+TEST(InjectorTest, BindFunctionWithoutParam)
+{
+    tinydi::injector injector;
+    injector.bind<SampleInterface>([]() {
+        return std::make_shared<SampleImpl>();
+    });
+}
+
 TEST(InjectorTest, BindClass)
 {
     tinydi::injector injector;
@@ -41,6 +49,14 @@ TEST(InjectorTest, ReplaceFunction)
 {
     tinydi::injector injector;
     injector.replace<SampleInterface>([](const tinydi::injector &) {
+        return std::make_shared<SampleImpl>();
+    });
+}
+
+TEST(InjectorTest, ReplaceFunctionWithoutParam)
+{
+    tinydi::injector injector;
+    injector.replace<SampleInterface>([]() {
         return std::make_shared<SampleImpl>();
     });
 }
