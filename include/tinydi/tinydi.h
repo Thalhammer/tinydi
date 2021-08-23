@@ -455,6 +455,20 @@ namespace tinydi {
 		T& operator*() const {
 			return *get();
 		}
+		/**
+		 * \brief Check if the service is available.
+		 * \return True if the service was successfully resolved.
+		 */
+		operator bool() const noexcept {
+			return get(std::nothrow) != nullptr;
+		}
+		/**
+		 * \brief Check if the service is unavailable.
+		 * \return True if the service was not successfully resolved.
+		 */
+		bool operator!() const noexcept {
+			return get(std::nothrow) == nullptr;
+		}
 	};
 
 	inline void injector::bind_static_mappings() {
