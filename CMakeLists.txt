@@ -13,10 +13,6 @@ set(TINYDI_HEADER_FILES ${TINYDI_INCLUDE_PATH}/tinydi/tinydi.h)
 add_library(tinydi INTERFACE)
 add_library(tinydi::tinydi ALIAS tinydi) # To match export
 target_compile_features(tinydi INTERFACE cxx_std_11)
-add_compile_options(-Wall)
-add_compile_options(-Wextra)
-add_compile_options(-Werror)
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Weffc++ -Wold-style-cast" CACHE STRING "" FORCE)
 
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
