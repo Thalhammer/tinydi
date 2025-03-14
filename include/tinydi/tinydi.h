@@ -4,6 +4,8 @@ static_assert(__cplusplus >= 201103L, "This library requires C++11 or higher");
 #include <functional>
 #include <memory>
 #include <mutex>
+#include <new>
+#include <stdexcept>
 #include <string>
 #include <typeindex>
 #include <typeinfo>
@@ -22,8 +24,8 @@ namespace tinydi {
 	};
 
 	/**
-     * \brief Main Injector class
-     */
+	 * \brief Main Injector class
+	 */
 	class injector {
 		mutable std::recursive_mutex m_mtx{};
 		std::function<void(std::exception_ptr)> m_except_handler{};
@@ -36,14 +38,14 @@ namespace tinydi {
 
 	public:
 		/**
-         * \brief Get service of type T
-         *
-         * If the service was not yet created it will try instanciate it using the builder defined at the bind statement.
-         * If it can't create a valid instance for whatever reason it will return nullptr and the exception handler is called
-         * with any error happening during creation.
-         * \tparam T Type of the service interface
-         * \return Returns instance of service or nullptr
-         */
+		 * \brief Get service of type T
+		 *
+		 * If the service was not yet created it will try instanciate it using the builder defined at the bind statement.
+		 * If it can't create a valid instance for whatever reason it will return nullptr and the exception handler is called
+		 * with any error happening during creation.
+		 * \tparam T Type of the service interface
+		 * \return Returns instance of service or nullptr
+		 */
 		template <typename T>
 		typename std::enable_if<std::is_polymorphic<T>::value, std::shared_ptr<T>>::type get(std::nothrow_t) const noexcept {
 			std::unique_lock<std::recursive_mutex> lck(m_mtx);
@@ -80,13 +82,13 @@ namespace tinydi {
 		}
 
 		/**
-         * \brief Get service of type T
-         *
-         * Similar to the nothrow overload, but throws if it can't create a valid instance.
-         * Always returns a non nullptr pointer.
-         * \tparam T Type of the service interface
-         * \return Returns instance of service
-         */
+		 * \brief Get service of type T
+		 *
+		 * Similar to the nothrow overload, but throws if it can't create a valid instance.
+		 * Always returns a non nullptr pointer.
+		 * \tparam T Type of the service interface
+		 * \return Returns instance of service
+		 */
 		template <typename T>
 		typename std::enable_if<std::is_polymorphic<T>::value, std::shared_ptr<T>>::type get() const {
 			auto res = get<T>(std::nothrow);
@@ -96,15 +98,15 @@ namespace tinydi {
 		}
 
 		/**
-         * \brief Get all service instances of type T
-         *
-         * Returns all services registered for the given interface. If one of the service can not be created
-         * the service will be skiped and not be part of the returned list. The exception handler will be called
-         * with the exception. If there is no service bound to the given interface or the creation of all services fails
-         * it returns an empty list.
-         * \tparam T Type of the service interface
-         * \return Returns vector of services
-         */
+		 * \brief Get all service instances of type T
+		 *
+		 * Returns all services registered for the given interface. If one of the service can not be created
+		 * the service will be skiped and not be part of the returned list. The exception handler will be called
+		 * with the exception. If there is no service bound to the given interface or the creation of all services fails
+		 * it returns an empty list.
+		 * \tparam T Type of the service interface
+		 * \return Returns vector of services
+		 */
 		template <typename T>
 		typename std::enable_if<std::is_polymorphic<T>::value, std::vector<std::shared_ptr<T>>>::type get_all() const noexcept {
 			std::unique_lock<std::recursive_mutex> lck(m_mtx);
@@ -141,73 +143,97 @@ namespace tinydi {
 		}
 
 		/**
-         * \brief Bind a builder function to the given interface.
-         *
-         * Binds a builder function which is called to get an instance of the given service.
-         * Returning nullptr is considered an error and the result will not be part of any returned services.
-         *
-         * \tparam TInterface Type of the service interface
-         * \param fn Function to be called for service creation
-         */
+		 * \brief Bind a builder function to the given interface.
+		 *
+		 * Binds a builder function which is called to get an instance of the given service.
+		 * Returning nullptr is considered an error and the result will not be part of any returned services.
+		 *
+		 * \tparam TInterface Type of the service interface
+		 * \param fn Function to be called for service creation
+		 */
 		template <typename TInterface, typename = typename std::enable_if<std::is_polymorphic<TInterface>::value, void>::type>
 		void bind(std::function<std::shared_ptr<TInterface>(const tinydi::injector&)> fn) {
 			std::unique_lock<std::recursive_mutex> lck(m_mtx);
 			auto it = m_types.find(typeid(TInterface));
 			if (it != m_types.end())
 			{
-				it->second.instances.emplace_back(nullptr, [fn = std::move(fn)](const tinydi::injector& i) { return fn(i); });
+				it->second.instances.emplace_back(nullptr,
+#if __cplusplus >= 201402L
+												  [fn = std::move(fn)]
+#else
+												  [fn]
+#endif
+												  (const tinydi::injector& i) { return fn(i); });
 			} else
 			{
 				info e = {};
-				e.instances.emplace_back(nullptr, [fn = std::move(fn)](const tinydi::injector& i) { return fn(i); });
+				e.instances.emplace_back(nullptr,
+#if __cplusplus >= 201402L
+										 [fn = std::move(fn)]
+#else
+										 [fn]
+#endif
+										 (const tinydi::injector& i) { return fn(i); });
 				m_types.emplace(typeid(TInterface), std::move(e));
 			}
 		}
 
 		/**
-         * \brief Bind a builder function to the given interface.
-         *
-         * Binds a builder function which is called to get an instance of the given service.
-         * Returning nullptr is considered an error and the result will not be part of any returned services.
-         *
-         * \tparam TInterface Type of the service interface
-         * \param fn Function to be called for service creation
-         */
+		 * \brief Bind a builder function to the given interface.
+		 *
+		 * Binds a builder function which is called to get an instance of the given service.
+		 * Returning nullptr is considered an error and the result will not be part of any returned services.
+		 *
+		 * \tparam TInterface Type of the service interface
+		 * \param fn Function to be called for service creation
+		 */
 		template <typename TInterface, typename = typename std::enable_if<std::is_polymorphic<TInterface>::value, void>::type>
 		void bind(std::function<std::shared_ptr<TInterface>()> fn) {
 			std::unique_lock<std::recursive_mutex> lck(m_mtx);
 			auto it = m_types.find(typeid(TInterface));
 			if (it != m_types.end())
 			{
-				it->second.instances.emplace_back(nullptr, [fn = std::move(fn)](const tinydi::injector&) { return fn(); });
+				it->second.instances.emplace_back(nullptr,
+#if __cplusplus >= 201402L
+												  [fn = std::move(fn)]
+#else
+												  [fn]
+#endif
+												  (const tinydi::injector&) { return fn(); });
 			} else
 			{
 				info e = {};
-				e.instances.emplace_back(nullptr, [fn = std::move(fn)](const tinydi::injector&) { return fn(); });
+				e.instances.emplace_back(nullptr,
+#if __cplusplus >= 201402L
+										 [fn = std::move(fn)]
+#else
+										 [fn]
+#endif
+										 (const tinydi::injector&) { return fn(); });
 				m_types.emplace(typeid(TInterface), std::move(e));
 			}
 		}
 
 		/**
-         * \brief Bind an existing instance to the given interface.
-         * \tparam TInterface Type of the service interface
-         * \param instance Instance of the service
-         */
+		 * \brief Bind an existing instance to the given interface.
+		 * \tparam TInterface Type of the service interface
+		 * \param instance Instance of the service
+		 */
 		template <typename TInterface, typename = typename std::enable_if<std::is_polymorphic<TInterface>::value, void>::type>
 		void bind(std::shared_ptr<TInterface> instance) {
 			bind<TInterface>([instance](const injector&) { return instance; });
 		}
 
 		/**
-         * \brief Bind a service implementation class to the given interface.
-         *
-         * Binds an implementation of the given interface. Calls make_shared with the implementation class
-         * when it gets built. Registeres both TImpl and TInterface with the injector allowing you to directly
-         * get the implementation type without casting if needed.
-         *
-         * \tparam TInterface Type of the service interface
-         * \tparam TImpl Type of the service implementation
-         */
+		 * \brief Bind a service implementation class to the given interface.
+		 *
+		 * Binds an implementation of the given interface. Calls make_shared with the implementation class
+		 * when it gets built. Registeres both TImpl and TInterface with the injector allowing you to directly
+		 * get the implementation type without casting if needed.
+		 *
+		 * \tparam TInterface Type of the service interface
+		 * \tparam TImpl Type of the service implementation
+		 */
 		template <typename TInterface, typename TImpl,
 				  typename = typename std::enable_if<std::is_polymorphic<TInterface>::value>::type,
 				  typename = typename std::enable_if<std::is_base_of<TInterface, TImpl>::value>::type>
@@ -239,63 +265,75 @@ namespace tinydi {
 		}
 
 		/**
-         * \brief Bind a builder function to the given interface, removing all existing implementations.
-         *
-         * Binds a builder function which is called to get an instance of the given service.
-         * Returning nullptr is considered an error and the result will not be part of any returned services.
-         * All prior bindings are removed.
-         *
-         * \tparam TInterface Type of the service interface
-         * \param fn Function to be called for service creation
-         */
+		 * \brief Bind a builder function to the given interface, removing all existing implementations.
+		 *
+		 * Binds a builder function which is called to get an instance of the given service.
+		 * Returning nullptr is considered an error and the result will not be part of any returned services.
+		 * All prior bindings are removed.
+		 *
+		 * \tparam TInterface Type of the service interface
+		 * \param fn Function to be called for service creation
+		 */
 		template <typename TInterface, typename = typename std::enable_if<std::is_polymorphic<TInterface>::value, void>::type>
 		void replace(std::function<std::shared_ptr<TInterface>(const tinydi::injector&)> fn) {
 			std::unique_lock<std::recursive_mutex> lck(m_mtx);
 			m_types.erase(typeid(TInterface));
 			info e = {};
-			e.instances.emplace_back(nullptr, [fn = std::move(fn)](const tinydi::injector& i) { return fn(i); });
+			e.instances.emplace_back(nullptr,
+#if __cplusplus >= 201402L
+									 [fn = std::move(fn)]
+#else
+									 [fn]
+#endif
+									 (const tinydi::injector& i) { return fn(i); });
 			m_types.emplace(typeid(TInterface), std::move(e));
 		}
 
 		/**
-         * \brief Bind a builder function to the given interface, removing all existing implementations.
-         *
-         * Binds a builder function which is called to get an instance of the given service.
-         * Returning nullptr is considered an error and the result will not be part of any returned services.
-         * All prior bindings are removed.
-         *
-         * \tparam TInterface Type of the service interface
-         * \param fn Function to be called for service creation
-         */
+		 * \brief Bind a builder function to the given interface, removing all existing implementations.
+		 *
+		 * Binds a builder function which is called to get an instance of the given service.
+		 * Returning nullptr is considered an error and the result will not be part of any returned services.
+		 * All prior bindings are removed.
+		 *
+		 * \tparam TInterface Type of the service interface
+		 * \param fn Function to be called for service creation
+		 */
 		template <typename TInterface, typename = typename std::enable_if<std::is_polymorphic<TInterface>::value, void>::type>
 		void replace(std::function<std::shared_ptr<TInterface>()> fn) {
 			std::unique_lock<std::recursive_mutex> lck(m_mtx);
 			m_types.erase(typeid(TInterface));
 			info e = {};
-			e.instances.emplace_back(nullptr, [fn = std::move(fn)](const tinydi::injector&) { return fn(); });
+			e.instances.emplace_back(nullptr,
+#if __cplusplus >= 201402L
+									 [fn = std::move(fn)]
+#else
+									 [fn]
+#endif
+									 (const tinydi::injector&) { return fn(); });
 			m_types.emplace(typeid(TInterface), std::move(e));
 		}
 
 		/**
-         * \brief Bind an existing instance to the given interface, removing all existing implementations.
-         * \tparam TInterface Type of the service interface
-         * \param instance Instance of the service
-         */
+		 * \brief Bind an existing instance to the given interface, removing all existing implementations.
+		 * \tparam TInterface Type of the service interface
+		 * \param instance Instance of the service
+		 */
 		template <typename TInterface, typename = typename std::enable_if<std::is_polymorphic<TInterface>::value, void>::type>
 		void replace(std::shared_ptr<TInterface> instance) {
 			replace<TInterface>([instance](const injector&) { return instance; });
 		}
 
 		/**
-         * \brief Bind a service implementation class to the given interface, removing all existing implementations.
-         *
-         * Binds an implementation of the given interface. Calls make_shared with the implementation class
-         * when it gets built. Registeres both TImpl and TInterface with the injector allowing you to directly
-         * get the implementation type without casting if needed. All prior bindings are removed.
-         *
-         * \tparam TInterface Type of the service interface
-         * \tparam TImpl Type of the service implementation
-         */
+		 * \brief Bind a service implementation class to the given interface, removing all existing implementations.
+		 *
+		 * Binds an implementation of the given interface. Calls make_shared with the implementation class
+		 * when it gets built. Registeres both TImpl and TInterface with the injector allowing you to directly
+		 * get the implementation type without casting if needed. All prior bindings are removed.
+		 *
+		 * \tparam TInterface Type of the service interface
+		 * \tparam TImpl Type of the service implementation
+		 */
 		template <typename TInterface, typename TImpl,
 				  typename = typename std::enable_if<std::is_polymorphic<TInterface>::value>::type,
 				  typename = typename std::enable_if<std::is_base_of<TInterface, TImpl>::value>::type>
@@ -315,79 +353,63 @@ namespace tinydi {
 		}
 
 		/**
-         * \brief Set handler for exceptions during service creation.
-         *
-         * This handler function is called when an exception is encountered during service instantiation.
-         *
-         * \param cb Exception handler
-         */
+		 * \brief Set handler for exceptions during service creation.
+		 *
+		 * This handler function is called when an exception is encountered during service instantiation.
+		 *
+		 * \param cb Exception handler
+		 */
 		void set_except_handler(std::function<void(std::exception_ptr)> cb) {
 			std::unique_lock<std::recursive_mutex> lck(m_mtx);
 			m_except_handler = cb;
 		}
 
 		/**
-         * \brief Get the current exception handler
-         *
-         * \return Exception handler
-         */
+		 * \brief Get the current exception handler
+		 *
+		 * \return Exception handler
+		 */
 		std::function<void(std::exception_ptr)> get_except_handler() const {
 			std::unique_lock<std::recursive_mutex> lck(m_mtx);
 			return m_except_handler;
 		}
 
 		/**
-         * \brief Bind all mappings defined using TINYDL_BIND_CLASS and TINYDL_BIND_FUNCTION to this injector.
-         */
+		 * \brief Bind all mappings defined using TINYDL_BIND_CLASS and TINYDL_BIND_FUNCTION to this injector.
+		 */
 		void bind_static_mappings();
 	};
 
 	/**
-     * \brief Set the default injector instance
-     * \param i Default injector
-     */
+	 * \brief Set the default injector instance
+	 * \param i Default injector
+	 */
 	void set_default_injector(std::shared_ptr<injector> i);
 
 	/**
-     * \brief Get the default injector instance
-     * \return Current default injector or nullptr if none was assigned yet
-     */
+	 * \brief Get the default injector instance
+	 * \return Current default injector or nullptr if none was assigned yet
+	 */
 	std::shared_ptr<injector> get_default_injector();
 
 	/**
-     * \brief Get a list of static mappings
-     *
-     * A static mapping is a mapping created independend of the injector creation using the TINYDL_BIND_CLASS and TINYDL_BIND_FUNCTION macros.
-     *
-     * \return Vector containing initializers for static mappings
-     */
+	 * \brief Get a list of static mappings
+	 *
+	 * A static mapping is a mapping created independend of the injector creation using the TINYDL_BIND_CLASS and TINYDL_BIND_FUNCTION macros.
+	 *
+	 * \return Vector containing initializers for static mappings
+	 */
 	std::vector<std::function<void(injector&)>>& get_static_mappings();
 
 	/**
-     * \brief Get service of type T using the default injector.
-     *
-     * If the service was not yet created it will try instanciate it using the builder defined at the bind statement.
-     * If it can't create a valid instance for whatever reason it will return nullptr and the exception handler is called
-     * with any error happening during creation.
-     * \tparam T Type of the service interface
-     * \return Returns instance of service or nullptr
-     */
-	template <typename T>
-	inline std::shared_ptr<T> get() {
-		auto injector = get_default_injector();
-		if (!injector)
-			throw dependency_not_found_exception("No default injector set");
-		return injector->get<T>();
-	}
-
-	/**
-     * \brief Get service of type T using the default injector
-     *
-     * Similar to the nothrow overload, but throws if it can't create a valid instance.
-     * Always returns a non nullptr pointer.
-     * \tparam T Type of the service interface
-     * \return Returns instance of service
-     */
+	 * \brief Get service of type T using the default injector.
+	 *
+	 * If the service was not yet created it will try instanciate it using the builder defined at the bind statement.
+	 * If it can't create a valid instance for whatever reason it will return nullptr and the exception handler is called
+	 * with any error happening during creation.
+	 * \tparam T Type of the service interface
+	 * \return Returns instance of service or nullptr
+	 */
 	template <typename T>
 	inline std::shared_ptr<T> get(std::nothrow_t) {
 		auto injector = get_default_injector();
@@ -397,19 +419,70 @@ namespace tinydi {
 	}
 
 	/**
-     * \brief Lazy service resolver
-     *
-     * Resolves the given service on first access.
-     */
+	 * \brief Get service of type T using the default injector
+	 *
+	 * Similar to the nothrow overload, but throws if it can't create a valid instance.
+	 * Always returns a non nullptr pointer.
+	 * \tparam T Type of the service interface
+	 * \return Returns instance of service
+	 */
+	template <typename T>
+	inline std::shared_ptr<T> get() {
+		auto injector = get_default_injector();
+		if (!injector)
+			throw dependency_not_found_exception("No default injector set");
+		return injector->get<T>();
+	}
+
+	/**
+	 * \brief Get all service instances of type T
+	 *
+	 * Returns all services registered for the given interface. If one of the service can not be created
+	 * the service will be skiped and not be part of the returned list. The exception handler will be called
+	 * with the exception. If there is no service bound to the given interface or the creation of all services fails
+	 * it returns an empty list. If no default injector is registered it returns an empty list.
+	 * \tparam T Type of the service interface
+	 * \return Returns vector of services
+	 */
+	template <typename T>
+	inline typename std::enable_if<std::is_polymorphic<T>::value, std::vector<std::shared_ptr<T>>>::type get_all(std::nothrow_t) {
+		auto injector = get_default_injector();
+		if (!injector) return {};
+		return injector->get_all<T>();
+	}
+
+	/**
+	 * \brief Get all service instances of type T
+	 *
+	 * Returns all services registered for the given interface. If one of the service can not be created
+	 * the service will be skiped and not be part of the returned list. The exception handler will be called
+	 * with the exception. If there is no service bound to the given interface or the creation of all services fails
+	 * it returns an empty list.
+	 * \tparam T Type of the service interface
+	 * \return Returns vector of services
+	 */
+	template <typename T>
+	inline typename std::enable_if<std::is_polymorphic<T>::value, std::vector<std::shared_ptr<T>>>::type get_all() {
+		auto injector = get_default_injector();
+		if (!injector)
+			throw dependency_not_found_exception("No default injector set");
+		return injector->get_all<T>();
+	}
+
+	/**
+	 * \brief Lazy service resolver
+	 *
+	 * Resolves the given service on first access.
+	 */
 	template <typename T>
 	class lazy_handle {
 		mutable std::shared_ptr<T> m_instance = nullptr;
 
 	public:
 		/**
-         * Get an instance of this service and throw on error.
-         * \return Instance of service
-         */
+		 * Get an instance of this service and throw on error.
+		 * \return Instance of service
+		 */
 		std::shared_ptr<T> get() const {
 			auto x = std::atomic_load(&m_instance);
 			if (!x)
@@ -420,9 +493,9 @@ namespace tinydi {
 			return x;
 		}
 		/**
-         * Get an instance of this service and return nullptr on error.
-         * \return Instance of service or nullptr
-         */
+		 * Get an instance of this service and return nullptr on error.
+		 * \return Instance of service or nullptr
+		 */
 		std::shared_ptr<T> get(std::nothrow_t) const {
 			auto x = std::atomic_load(&m_instance);
 			if (!x)
@@ -434,24 +507,24 @@ namespace tinydi {
 			return x;
 		}
 		/**
-         * Reset the cached instance. Next access will cause a new service lookup.
-         */
+		 * Reset the cached instance. Next access will cause a new service lookup.
+		 */
 		void reset() {
 			std::atomic_store(&m_instance, std::shared_ptr<T>{});
 		}
 		/**
-         * Dereference the service. Looks up the given service implementation and returns it.
-         * Throws on error.
-         * \return Pointer to service.
-         */
+		 * Dereference the service. Looks up the given service implementation and returns it.
+		 * Throws on error.
+		 * \return Pointer to service.
+		 */
 		T* operator->() const {
 			return get().get();
 		}
 		/**
-         * Dereference the service. Looks up the given service implementation and returns it.
-         * Throws on error.
-         * \return Reference to service.
-         */
+		 * Dereference the service. Looks up the given service implementation and returns it.
+		 * Throws on error.
+		 * \return Reference to service.
+		 */
 		T& operator*() const {
 			return *get();
 		}
